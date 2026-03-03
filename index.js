@@ -58,8 +58,8 @@ app.post("/api/ai/chat", aiLimiter, async (req, res) => {
     return res.status(400).json({ error: "Invalid request: messages array required" });
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.error("ANTHROPIC_API_KEY not set in environment variables");
+  if (!process.env.GEMINI_API_KEY) {
+    console.error("GEMINI_API_KEY not set in environment variables");
     return res.status(500).json({ error: "Server configuration error" });
   }
 
@@ -71,24 +71,47 @@ app.post("/api/ai/chat", aiLimiter, async (req, res) => {
     };
     if (system) payload.system = system;
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify(payload),
-    });
+  const geminiPayload = {
+  contents: messages.map((m) => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  })),
+  systemInstruction: system ? { parts: [{ text: system }] } : undefined,
+  generationConfig: {
+    maxOutputTokens: Math.min(max_tokens || 1000, 4000),
+  },
+};
 
+const response = await fetch(
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(geminiPayload),
+  }
+);
     const data = await response.json();
 
-    if (!response.ok) {
-      console.error("Anthropic API error:", data);
-      return res.status(response.status).json({ error: data.error?.message || "AI request failed" });
-    }
+if (!response.ok) {
+  return res.status(response.status).json({ 
+    error: data.error?.message || "Gemini request failed" 
+  });
+}
 
-    res.json(data);
+// Convert Gemini response format to match what frontend expects
+const converted = {
+  content: [{
+    type: "text",
+    text: data.candidates?.[0]?.content?.parts?.[0]?.text || "No response"
+  }],
+  usage: {
+    input_tokens: data.usageMetadata?.promptTokenCount || 0,
+    output_tokens: data.usageMetadata?.candidatesTokenCount || 0,
+  }
+};
+
+res.json(converted);
+
   } catch (err) {
     console.error("Proxy error:", err);
     res.status(500).json({ error: "Internal server error" });
