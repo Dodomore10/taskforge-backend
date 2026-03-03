@@ -10,7 +10,7 @@ const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 8080;
 
 // ── Middleware ───────────────────────────────────────────────
 app.use(express.json({ limit: "10mb" }));
